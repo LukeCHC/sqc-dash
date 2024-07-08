@@ -80,6 +80,15 @@ class DownloadAndDecodeChcEph:
         decoded_data =  decoderaw(self.rtcmeph,msgEPH) 
         return decoded_data
     
+    def download(self):
+        msgEPH = self.tcp.run(sec=5)#
+        return msgEPH
+        
+    def decode(self, msgEPH):
+        decoded_data =  decoderaw(self.rtcmeph,msgEPH) 
+        return decoded_data
+        
+    
 if __name__ == '__main__':
     downloader = DownloadAndDecodeChcEph(EPHIP, EPHPORT)
     decoded_data = downloader.run()

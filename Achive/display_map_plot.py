@@ -98,7 +98,7 @@ class SkyMapMap:
                 lat = lat,
                 text=[f"{prn_code[i]} {epoch_list[i]}" for i in range(len(epoch_list))],
                 mode = 'lines',
-                line = dict(width = 2, color = 'blue'),
+                line = dict(width = 4, color = 'blue'),
             ))
         
         return fig
