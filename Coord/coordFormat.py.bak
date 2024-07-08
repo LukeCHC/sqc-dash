@@ -1,0 +1,494 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed May  4 12:19:17 2022
+
+@author: chcuk
+"""
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Apr 28 10:20:59 2022
+
+@author: chcuk
+"""
+import numpy as np
+import math
+
+
+class ecef:
+    def __init__(self, position, velocity):
+        if type(position) == np.ndarray:
+            if position.ndim != 2: #check array is 2d e.g shape = (1,3)
+               print("Wrong number of dimensions, should be 2") 
+        if type(position) == list:
+            position = np.array([position]).reshape(3,-1).T # turn list to 2d array
+        if type(velocity) == list:
+            velocity = np.array([velocity]).reshape(3,-1).T # turn list to 2d array
+        if np.shape(position) != np.shape(velocity):
+            print("position and velocity shapes mismatch")
+        if len(position[:,0]) == len(position[:,1]) ==len(position[:,2]):
+            self.x        = position[:,0]
+            self.y        = position[:,1]
+            self.z        = position[:,2]
+            self.position = np.array([[self.x[i], self.y[i], self.z[i]] for i in range(len(self.x))])
+        else: Warning("Length of x, y, z arrays do not match")
+        if len(velocity[:,0]) == len(velocity[:,1]) ==len(velocity[:,2]):
+            self.vx        = velocity[:,0]
+            self.vy        = velocity[:,1]
+            self.vz        = velocity[:,2]
+            self.velocity = np.array([[self.vx[i], self.vy[i], self.vz[i]] for i in range(len(self.x))])
+        else: Warning("Length of vx, vy, vz arrays do not match")
+        
+        # check for float
+
+    def __add__(self, ecef2):
+        xp = self.position[:,0] + ecef2.postion[:,0]
+        yp = self.position[:,1] + ecef2.postion[:,1]
+        zp = self.position[:,2] + ecef2.postion[:,2]
+        xv = self.velocity[:,0] + ecef2.postion[:,0]
+        yv = self.velocity[:,1] + ecef2.postion[:,1]
+        zv = self.velocity[:,2] + ecef2.postion[:,2]
+        return ecef(np.array([xp, yp, zp]), np.array([xv, yv, zv]))
+
+    def distance(self, point2):
+        pos1 = self.position
+        pos2 = point2.position
+
+        dist = [math.dist(pos1[i], pos2[i]) for i in range(len(pos1))]
+        return dist
+
+    def ecef2rac(self, brdc):
+        """ based on inverse matrix of rac2ecef"""
+        # brdc is another ecef calclated from brdc eph of rac body
+        # brdc should be same shape as position velocity
+        xyzPos = self.position
+        xyzVel = self.velocity
+        if brdc.position.shape != xyzPos.shape:
+            Warning("array shape mismatch")
+        eAlongL = [
+            brdc.velocity[i] / np.linalg.norm(brdc.velocity[i], keepdims=True)
+            for i in range(np.shape(xyzPos)[0])
+        ]
+
+        eAlong = np.array(eAlongL)
+        # eCrossL = [
+        #     np.cross(xyzPos[i], xyzVel[i])
+        #     / np.linalg.norm(np.cross(xyzPos[i], xyzVel[i]), keepdims=True)
+        #     for i in range(xyzPos.shape[0])
+        # ]
+        eCrossL = [
+            np.cross(brdc.position[i], brdc.velocity[i])
+            / np.linalg.norm(np.cross(brdc.position[i], brdc.velocity[i]), keepdims=True)
+            for i in range(brdc.position.shape[0])
+        ]
+        eCross = np.array(eCrossL)
+        eRadial = np.cross(eAlong, eCross)
+        arrRAC = np.full((xyzPos.shape), np.nan)
+        arrRACV = np.full((xyzPos.shape), np.nan)
+        for m in range(arrRAC.shape[0]):
+            matRAC = np.array(
+                np.matrix([eRadial[m, :], eAlong[m, :], eCross[m, :]]).T.I
+            )
+            arrRAC[m, :] = np.dot(matRAC, self.position[m])
+            arrRACV[m, :] = np.dot(matRAC, self.velocity[m])
+        # for m in range(arrRAC.shape[0]):
+        #    matRAC = np.array(
+        #            np.matrix([eRadial[m], eAlong[m], eCross[m]]).T.I
+        #        )
+        #    arrRAC[m,:] = np.dot(matRAC, self.position[m])
+        return rac(arrRAC, arrRACV)
+
+    def ecef2rac_(self, XYZ):
+        """ based on ecef (0,0,0) """
+        xyzPos = self.brdcXYZ
+        xyzVel = self.brdcXYZVel
+        eRadialL = [
+            xyzPos[i, :, :] / np.linalg.norm(xyzPos[i, :, :], axis=1, keepdims=True)
+            for i in range(xyzPos.shape[0])
+        ]
+        eRadial = np.array(eRadialL)
+        eCrossL = [
+            np.cross(xyzPos[i, :, :], xyzVel[i, :, :])
+            / np.linalg.norm(
+                np.cross(xyzPos[i, :, :], xyzVel[i, :, :]), axis=1, keepdims=True
+            )
+            for i in range(xyzPos.shape[0])
+        ]
+        eCross = np.array(eCrossL)
+        eAlongL = [
+            np.cross(eCross[i, :, :], eRadial[i, :, :])
+            / np.linalg.norm(
+                np.cross(eCross[i, :, :], eRadial[i, :, :]), axis=1, keepdims=True
+            )
+            for i in range(xyzPos.shape[0])
+        ]
+        eAlong = np.array(eAlongL)
+        arrRAC = np.full((xyzPos.shape), np.nan)
+        for i in range(arrRAC.shape[0]):
+            for m in range(arrRAC.shape[1]):
+                matRAC = np.array(
+                    [eRadial[i, m, :], eAlong[i, m, :], eCross[i, m, :]]
+                ).T
+                arrRAC[i, m, :] = np.dot(matRAC, XYZ[i, m, :])
+        return arrRAC
+
+    def ecef2ned(self, ecef2):
+        # geodetic North East Down
+        lla = self.ecef2lla()
+        mu = lla.latR
+        lon = lla.lonR
+
+        DCM = np.matrix(
+            [
+                [
+                    -math.sin(mu) * math.cos(lon),
+                    -math.sin(mu) * math.sin(lon),
+                    math.cos(mu),
+                ],
+                [-math.sin(lon), math.cos(lon), 0],
+                [
+                    -math.cos(mu) * math.cos(lon),
+                    -math.cos(mu) * math.sin(lon),
+                    -math.sin(mu),
+                ],
+            ]
+        )
+
+        ecefVector = np.matrix(
+            [ecef2.position[0], ecef2.position[1], ecef2.position[2]]
+        ).T
+        # returns a vector of size 3
+        return np.matmul(DCM, ecefVector)
+    
+    def ecef2enu(self,ecef2):
+        # compute ecef to local coordinate transfromation matrix
+        #                 local tangental coordinate
+        # Ref: rtklib_2.4.3\src\rtccmn.c\ecef2enu
+        # I: ecef (for geodetic position (lat,lon)(rad))
+        #    ecef2: vector in ecef coordinate(x,y,z)
+        # O: vector in local tangental coordinate(e,n,u)
+        # https://en.wikipedia.org/wiki/Geographic_coordinate_conversion#From_ECEF_to_ENU
+        #i = 0
+        arrenu = np.full((ecef2.position.shape), np.nan)
+        for i in range(len(ecef2.position)):
+            lla = self.ecef2lla()
+            mu = lla.latR
+            lon = lla.lonR
+            sinp = math.sin(mu[i])# for j in range(len(mu))]
+            cosp = math.cos(mu[i])# for j in range(len(mu))]
+            sinl = math.sin(lon[i])# for j in range(len(lon))]
+            cosl = math.cos(lon[i]) #for j in range(len(lon))]
+            DCM = np.matrix([
+                    [-sinl,      cosl,      0],
+                    [-sinp*cosl, -sinp*sinl,cosp],
+                    [cosp*cosl,  cosp*sinl ,sinp]
+                    ]) 
+            arrenu[i,:] = np.dot(DCM,ecef2.position[i])
+        # ecefVector = np.matrix(
+        #     [ecef2.position[i][0], ecef2.position[i][1], ecef2.position[i][2]]
+        # ).T
+        # returns a vector of size 3
+        return arrenu
+
+    def ecef2lla(self):
+
+        x = self.x.reshape(1,-1)
+        y = self.y.reshape(1,-1)
+        z = self.z.reshape(1,-1)
+
+        s = np.sqrt(x ** 2 + y ** 2)
+        R = 6378137  # equatorial plane (m)
+        # e = 8.1819190842622e-2  # First eccentriciy
+        esq = 6.69437999014e-3  # First eccentriciy squared
+        a = 6378137.0  # Semi-major axis (m)
+        b = 6356752.3142  # Semi-minor axis (m)
+        f = (a - b) / a
+
+        # e = np.sqrt(1 - (1-f)**2)     # 0.08181919092890692
+
+        def fromBeta2Mu(beta):
+            # reduced latitude
+            up = [z[0,i] + esq * (1 - f) * R * (math.sin(beta[i])) ** 3 / (1 - esq) for i in range(z.shape[1])]
+            down = [s[0,i] - esq * R * (math.cos(beta[i])) ** 3 for i in range(z.shape[1])]
+
+            return [math.atan(up[i] / down[i]) for i in range(len(up))]
+
+        def fromMu2Beta(mu, f):
+            # reduced eccentricity
+            return [math.atan(((1 - f) * math.sin(mu[i])) / math.cos(mu[i])) for i in range(len(mu))]
+
+        beta0 = [math.atan(z[0,i] / (1 - f) * s[0,i]) for i in range(len(z[0]))] 
+        mu0, mu1 = 0, 1
+        while np.abs((np.array(mu1) - np.array(mu0))).mean() > 1e-9:
+            mu0 = fromBeta2Mu(beta0)
+            beta1 = fromMu2Beta(mu0, f)
+            mu1 = fromBeta2Mu(beta1)
+            beta0 = beta1
+        N = [R / (np.sqrt(1 - esq * (math.sin(mu1[i])) ** 2)) for i in range(len(mu1))]
+        h = [s[0,i] * math.cos(mu1[i]) + (z[0,i] + esq * N[i] * math.sin(mu1[i])) * math.sin(mu1[i]) - N[i] for i in range(len(mu1))]
+
+        lonR = [math.atan(y[0][i] / x[0][i]) for i in range(len(x[0]))]
+        latR = mu1
+        altM = h  # ellipsoidal height
+        
+        res = np.array([[latR, lonR, altM]]).reshape(3,-1).T
+        return lla(res, "R")
+
+
+class rac:
+    def __init__(self, position, velocity):
+        self.position = position
+        self.velocity = velocity
+        if type(position) == np.ndarray:
+            if position.ndim != 2: #check array is 2d e.g shape = (1,3)
+               print("Wrong number of dimensions, should be 2") 
+        if type(position) == list:
+            self.position = np.array([position]).reshape(3,-1).T # turn list to 2d array
+        if type(velocity) == list:
+            self.velocity = np.array([velocity]).reshape(3,-1).T # turn list to 2d array
+        if np.shape(self.position) != np.shape(self.velocity):
+            print("position and velocity shapes mismatch")
+
+    def rac2ecef(self, brdc):
+        racPos = brdc.position
+        racVel = brdc.velocity
+        # racVel[i,:,:] ->2D
+        # axis =1 for row
+        eAlongL = [
+            racVel[i] / np.linalg.norm(racVel[i], keepdims=True)
+            for i in range(racPos.shape[0])
+        ]
+        eAlong = np.array(eAlongL)
+        eCrossL = [
+            np.cross(racPos[i], racVel[i])
+            / np.linalg.norm(np.cross(racPos[i], racVel[i]), keepdims=True)
+            for i in range(racPos.shape[0])
+        ]
+        eCross = np.array(eCrossL)
+        eRadial = np.cross(eAlong, eCross)
+        arrECEF = np.full((racPos.shape), np.nan)
+        arrECEFV = np.full((racPos.shape), np.nan)
+        for i in range(arrECEF.shape[0]):
+            matRAC = np.array([eRadial[i, :], eAlong[i, :], eCross[i, :]]).T
+            arrECEF[i] = np.dot(matRAC, self.position[i,:])
+            arrECEFV[i] = np.dot(matRAC, self.velocity[i])
+        return ecef(arrECEF, arrECEFV)
+
+
+class neuATX:
+    def __init__(self, position, sunPos):
+        #= position [[x,y,z]]
+        #  sunPos   [[x,y,z]]
+        self.postion = position
+        self.sunPos = sunPos
+
+    def neu2ecef(self, arrATX):
+        sunP = self.sunPos
+
+        kValL = [
+            -self.posPC[i] / np.linalg.norm(-self.posPC[i], keepdims=True)
+            for i in range(self.posPC.shape[0])
+        ]
+        kVal = np.array(kValL)
+
+        eValL = [
+            (sunP[i] - self.posPC[i])
+            / np.linalg.norm((sunP[i] - self.posPC[i]), keepdims=True)
+            for i in range(self.posPC.shape[0])
+        ]
+        eVal = np.array(eValL)
+
+        jVal0 = np.cross(kVal, eVal)
+        jValL = [
+            jVal0[i] / np.linalg.norm(jVal0[i], keepdims=True)
+            for i in range(self.posPC.shape[0])
+        ]
+        jVal = np.array(jValL)
+
+        iVal = np.cross(jVal, kVal)
+
+        arrPC = np.full((self.posPC.shape[0], 3), np.nan)
+        vel   = np.zeros((arrPC.shape[0],arrPC.shape[1]))
+        for i in range(arrPC.shape[0]):
+            matPC = np.array([iVal[i], jVal[i], kVal[i]]).T
+            arrPC[i] = np.dot(matPC, arrATX[i])
+        #posMC = self.posPC[:] - arrPC
+        return ecef(arrPC, vel)
+
+    def sunPos(self):
+
+        intvalStr = "%ds" % self.intval
+        dateS = [
+            datetime.strptime(str(self.posPC[i, 0, 0]), "%Y%m%d%H%M%S.%f")
+            for i in range(self.posPC.shape[0])
+        ]
+        dateE = [
+            datetime.strptime(str(self.posPC[i, -1, 0]), "%Y%m%d%H%M%S.%f")
+            for i in range(self.posPC.shape[0])
+        ]
+        dateR = [
+            pd.date_range(start=dateS[i], end=dateE[i], freq=intvalStr).tolist()
+            for i in range(self.posPC.shape[0])
+        ]
+        gpsT = [[SP3.sun().utc2gpsw(x) for x in dateR[i]] for i in range(len(dateR))]
+        gpsTimeArr = np.array(gpsT)
+        sunPerSV = []
+        for i in range(gpsTimeArr.shape[0]):
+            days = []
+            for m in range(gpsTimeArr.shape[1]):
+                days.append(SP3.sun().sunpos(gpsTimeArr[i, m, :], 18).tolist())
+            sunPerSV.append(days)
+        sunAllSV = []
+        for i in range(gpsTimeArr.shape[0]):
+            days = []
+            for x in sunPerSV[i]:
+                for m in range(svnum):
+                    days.append(x)
+            sunAllSV.append(days)
+        sunP = np.array(sunAllSV)
+        return sunP
+
+
+class lla:
+    def __init__(self, position, mode):
+        # input must be in degrees
+        # north and east are positive directions
+        # alt is ellipsoidal height
+        if type(position) == np.ndarray:
+            if len(position.shape) != 2: #check array is 2d e.g shape = (1,3)
+                Warning("Wrong number of dimensions, should be 2") 
+        if type(position) == list:
+            position = np.array([position]) # turn list to 2d array
+            
+        if mode == "D":
+            self.latD = position[:,0]
+            self.lonD = position[:,1]
+            self.latR = position[:,0] * (np.pi / 180)
+            self.lonR = position[:,1] * (np.pi / 180)
+            self.altM = position[:,2]
+        if mode == "R":
+            self.latR = position[:,0]
+            self.lonR = position[:,1]
+            self.latD = position[:,0] * (180 / np.pi)
+            self.lonD = position[:,1] * (180 / np.pi)
+            self.altM = position[:,2]
+        if np.abs(self.latD.any()) > 90:
+            Warning("Lat outside range of -90 < Lat < 90")
+        if np.abs(self.lonD.any()) > 180:
+            Warning("Lon outside range of -180 < Lon < 180")
+            
+        
+        if len(position[:,0]) == len(position[:,1]) ==len(position[:,2]):
+            self.position = np.array([[self.latR[i], self.lonR[i], self.altM[i]] for i in range(len(self.latR))])
+
+    def __sub__(self, lla2):
+
+        lonDiff = (self.lonD - lla2.lonD) * 3600 * 30.8667 * math.cos(self.latR)
+        latDiff = (self.latD - lla2.latD) * 3600 * 30.8667
+        altDiff = self.altM - lla2.altM
+
+        return llaDelta([lonDiff, latDiff, altDiff])
+
+    def lla2ecef(self):
+        WGS84_A = 6378137.0
+        WGS84_f = 1 / 298.257223565
+        WGS84_E2 = WGS84_f * (2 - WGS84_f)
+        # deg2rad = math.pi / 180.0
+        # rad2deg  = 180.0 / math.pi
+        lat = self.latR
+        lon = self.lonR
+        alt = self.altM
+        N = [WGS84_A / (math.sqrt(1 - WGS84_E2 * math.sin(lat[i]) * math.sin(lat[i]))) for i in range(len(lat))]
+        x = [(N[i] + alt[i]) * math.cos(lat[i]) * math.cos(lon[i]) for i in range(len(lat))]
+        y = [(N[i] + alt[i]) * math.cos(lat[i]) * math.sin(lon[i]) for i in range(len(lat))]
+        z = [(N[i] * (1 - WGS84_f) * (1 - WGS84_f) + alt[i]) * math.sin(lat[i]) for i in range(len(lat))]
+        vel = np.array([[0,0,0] for i in range(len(z))])
+        return ecef([x, y, z], vel)
+
+
+class llaDelta:
+    def __init__(self, distance):
+        self.lonM = distance[0]
+        self.latM = distance[1]
+        self.altM = distance[2]
+
+
+def enu2ecef(ecef1,penu):
+    # Ref:  rtklib_2.4.3\src\rtccmn.c\enu2ecef
+    # transform ecef vector to local tangental coordinate
+    # I: *pos   geodetic position plla(lat,lon,h) (rad)
+    # I: *r     vector in ecef coordinate penu[e,n,u]
+    # O: *e     vector in local tangental coordinate {x,y,z}
+    npos = ecef1.position.shape
+    exyz = np.full(npos,np.nan)
+    exyzv = np.zeros(npos)
+    for i in range(npos[0]):
+        plla = ecef1.ecef2lla()
+        #plla = ecef1.ecef2lla_rtklib()
+        sinp = math.sin(plla.latR[i])# for j in range(len(plla.latR))]
+        cosp = math.cos(plla.latR[i])# for j in range(len(plla.latR))]
+        sinl = math.sin(plla.lonR[i])# for j in range(len(plla.latR))]
+        cosl = math.cos(plla.lonR[i])# for j in range(len(plla.latR))]
+        DCM = np.matrix(np.zeros(shape=(3,3)))
+        DCM[0,0] = -sinl
+        DCM[0,1] = cosl
+        DCM[0,2] = 0
+        DCM[1,0] = -sinp*cosl
+        DCM[1,1] = -sinp*sinl
+        DCM[1,2] = cosp
+        DCM[2,0] = cosp*cosl
+        DCM[2,1] = cosp *sinl
+        DCM[2,2] = sinp
+        exyz[i,:] = np.dot(DCM.T,penu[i])
+    return ecef(np.array(exyz), exyzv)
+
+# zoee = ecef(
+#     np.array([-2710810.9636, 4766114.6131, 3247415.2424]), np.array([0, 0, 0])
+# ).ecef2neu(
+#     ecef(np.array([-2710810.9636, 4766114.6131, 3247415.2424]), np.array([0, 0, 0]))
+# )
+
+
+# a = np.array([11387.469805, 14541.731163, -20846.735717])
+# b = np.array([11315.743620, 14537.170116, -20888.862102])
+# c = np.array([2597.430320, 20370.187304, 18948.277092])
+# d = np.array([2561.336880, 20423.840749, 18895.443498])
+# d1 = (b - a) / 30
+# d2 = (d - c) / 30
+# # PC11  11387.469805  14541.731163 -20846.735717    229.657568
+# # PC14   2597.430320  20370.187304  18948.277092
+# # PC11  11315.743620  14537.170116 -20888.862102    229.658255
+# # PC14   2561.336880  20423.840749  18895.443498
+# posc11 = a
+# vocc11 = d1
+# posc14 = c
+# vocc14 = d2
+# posanc11 = np.array([11387.468805, 14541.730163, -20846.734717])
+# vocanc11 = d1
+# posanc14 = np.array([2597.431320, 20370.188304, 18948.278092])
+# vocanc14 = d2
+# posanc = np.array([posanc11, posanc14])
+# vocanc = np.array([vocanc11, vocanc14])
+# pos = np.array([posc11, posc14])
+# voc = np.array([vocc11, vocc14])
+# rac1 = ecef(posanc, vocanc).ecef2rac(ecef(pos, voc))
+# xyz = rac1.rac2ecef(ecef(posanc, vocanc))
+
+
+# xyzPos = np.array(
+#     [
+#         [11387.469805, 14541.731163, -20846.735717],
+#         [2597.430320, 20370.187304, 18948.277092],
+#     ]
+# )
+# xyzVel = np.array([[2000, 3000, 4000], [2500, 3500, 4500]])
+# brdcPos = np.array([[1, 1, 1], [1, 1, 1]])
+# brdcVel = np.array([[4, 5, 6], [4, 5, 6]])
+
+# rac1 = ecef(xyzPos, xyzVel).ecef2rac(ecef(brdcPos, brdcVel))
+# xyz = rac1.rac2ecef(ecef(brdcPos, brdcVel))
+
+# xyz
+
+# rac = rac(np.array([[3, 2, 1], [1, 2, 3]]), np.array([[2, 2, 2], [4, 5, 6]])).rac2ecef(
+#     rac(np.array([[1, 1, 1], [4, 5, 6]]), np.array([[1, 1, 1], [4, 5, 6]]))
+# )
