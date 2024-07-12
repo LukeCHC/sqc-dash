@@ -8,6 +8,8 @@ from Coord import ECEF, LLA
 from download_live_eph import DownloadAndDecodeChcEph
 from eph_decode_formatter import eph_attributes_to_arr
 
+from chc_modules.find_sv_brdc import FindSvBrdc
+
 class SatPosCalcs:
     """
     This class handles all calculations of sat positions for the skymap dashboard
@@ -18,16 +20,40 @@ class SatPosCalcs:
         """self inherited from SkyMapDash"""
 
         self.local_dir = SkyMapDash.local_dir
+        self.SkyMapDash = SkyMapDash
         st.session_state = session_state
-        
+    
     def retrieve_and_process_satellite_data(self, mode = 'Whole Day'):
         # with st.sidebar:
         with st.spinner("Getting Live Broadcast Ephemeris..."):
             single_epoch_gps_brdc_eph = self.get_live_eph()
     
-            self.process_satellite_positions_live(single_epoch_gps_brdc_eph, mode)
+            self.process_satellite_positions(single_epoch_gps_brdc_eph, mode)
+            
+    def retrieve_and_process_satellite_data_past(self, mode = 'Whole Day'):
+        with st.spinner("Fetching BRDC from NASA CDDIS..."):
+            
+            process_datetime = datetime.combine(self.SkyMapDash.date, self.SkyMapDash.time)
+            sv_pos_xyz_arr = FindSvBrdc(process_datetime, 'G', self.local_dir).run()
+            
+            
+            # prepare arr shapes
+            epoch = sv_pos_xyz_arr[:,0].reshape(-1,1)
+            prn = sv_pos_xyz_arr[:,2].reshape(-1,1)
+
+            # convert from xyz to lla
+            sat_pos_ecef = ECEF(sv_pos_xyz_arr[:,3:])
+            sat_pos_lla = sat_pos_ecef.ecef2lla()
+            
+            orbit_lla_arr = np.hstack([epoch, prn, sat_pos_lla.lat_d, sat_pos_lla.lon_d, sat_pos_lla.alt_m])
+            
+            
+            matching_time_pos = orbit_lla_arr[orbit_lla_arr[:,0] == int(process_datetime.timestamp())]
+        
+            st.session_state.live_sat_pos = matching_time_pos
+            st.session_state.orbit_lla_arr = orbit_lla_arr
                 
-    def process_satellite_positions_live(self, single_epoch_gps_brdc_eph, extrapolation_mode):
+    def process_satellite_positions(self, single_epoch_gps_brdc_eph, extrapolation_mode):
         """Calculate satellite orbit using 1 epochs brdc data"""
         
         # broadcast array to other epochs
@@ -74,7 +100,6 @@ class SatPosCalcs:
         # prepare arr shapes
         epoch = sv_pos_xyz[:,0].reshape(-1,1)
         prn = sv_pos_xyz[:,2].reshape(-1,1)
-        zeros = np.zeros((sv_pos_xyz.shape[0],1))
 
         # convert from xyz to lla
         sat_pos_ecef = ECEF(sv_pos_xyz[:,3:])
@@ -114,6 +139,7 @@ class SatPosCalcs:
         ground_pos = st.session_state.ground_pos
         
         ground_pos = ECEF(ground_pos.position)
+        print(f"orbit {orbit_lla_arr.shape}")
         orbit_lla_obj = LLA(orbit_lla_arr[:,2:], 'd')
         
         orbit_azel = ground_pos.calculate_azel(orbit_lla_obj)

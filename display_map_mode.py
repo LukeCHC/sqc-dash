@@ -41,7 +41,6 @@ class FoliumMap:
             dragging=True,
             attributionControl=False,
             max_bounds=True,
-            
             )
         
         fg_stations = self.add_station_markers()
