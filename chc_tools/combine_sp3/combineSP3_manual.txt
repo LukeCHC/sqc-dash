@@ -1,0 +1,7 @@
+(Warning: files that you wish to combine will be deleted in this directory after running this script)
+
+To combine SP3 files:
+
+1. Open combineSP3.py in your Spyder.
+2. Move any .sp3 files to the same location/directory of 'combineSP3.py'
+3. (When ready) Execute the code of combineSP3.py in Spyder (by 'Shift+Enter')
