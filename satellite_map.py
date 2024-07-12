@@ -3,35 +3,17 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 import folium
 
 # Import necessary functions from your existing code
-from Coord import LLA, ECEF
-from GNSS import GPSKepler
-from eph_decode_formatter import eph_attributes_to_arr
+from Coord import LLA
 from sat_pos_calcs import SatPosCalcs
-
-from typing import Tuple, List
-from chc_modules import FindSV, FindSvBrdc
-import streamlit as st
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
-from datetime import datetime
-from pathlib import Path
 
 # Import necessary functions from your existing code
-from Coord import LLA, ECEF
-from GNSS import GPSKepler
-from eph_decode_formatter import eph_attributes_to_arr
-from sat_pos_calcs import SatPosCalcs
-from streamlit_image_coordinates import streamlit_image_coordinates
 from streamlit_folium import st_folium
 from folium.features import DivIcon
-from folium.plugins import Draw
 
 class SatelliteVisibilityApp:
     def __init__(self):
