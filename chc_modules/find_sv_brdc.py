@@ -54,6 +54,10 @@ class FindSvBrdc:
         logger=None,
     ):
         """
+        I SPENT 1 HOUR AND A HALF TRYING TO FIX A STUPID TIMEZONE BUG. I HATE TIMEZONES
+        I BELIEVE PD.TO_DATETIME AND DATETIME.FROMTIMESTAMP BEHAVE DIFFERENTLY WHEN IT COMES TO TIMEZONES
+        I HATE TIMEZONES
+        
         Calculate satellite positions for entire day using brdc files
         can only process one system at a time
 
@@ -65,7 +69,7 @@ class FindSvBrdc:
         logger: SimpleLogger object for logging
         
         
-        I SPENT 1 HOUR AND A HALF TRYING TO FIX A STUPID TIMEZONE BUG. I HATE TIMEZONES
+        
         
         NOTE: C59 satellite final result is very perculiar. It is not the same as the other satellites
         
@@ -338,21 +342,33 @@ class FindSvBrdc:
     def download_brdc_files(self):
         """downloads brdc files"""
         for day in self.process_days:
-            DownloadBrdc(day, self.local_dir).download()
+            DownloadBrdc(day, self.local_dir, logger=self.logger).download()
 
         # download next day for time matching to first eph of next day file
         next_day = max(self.process_days) + timedelta(days=1)
-        DownloadBrdc(next_day, self.local_dir).download()
+        DownloadBrdc(next_day, self.local_dir, logger= self.logger).download()
 
 
 if __name__ == "__main__":
-    epoch0 = datetime(2021, 1, 1)
-    epoch1 = datetime(2021, 1, 2)
-    epoch2 = datetime(2021, 1, 3)
+    # epoch0 = datetime(2021, 1, 1)
+    # epoch1 = datetime(2021, 1, 2)
+    # epoch2 = datetime(2021, 1, 3)
 
-    dates = [epoch0, epoch1, epoch2]
+    # dates = [epoch0, epoch1, epoch2]
+
+    dates = [datetime(2024,6,2)]
 
     local_dir = Path(r"F:/test/brdc_test")
 
+    print('C')
     # FindSvBrdc(dates, 'G', local_dir).run()
-    FindSvBrdc(dates, "C", local_dir).run()
+    arr = FindSvBrdc(dates, "C", local_dir, save_file_flag= False).run()
+    # print('G')
+    # arr = FindSvBrdc(dates, "G", local_dir, save_file_flag= False).run()
+
+    print(arr[0,0])
+    print(arr[-1,0])
+    
+    print(datetime.fromtimestamp(arr[0, 0]))
+    print(datetime.fromtimestamp(arr[-1, 0]))
+    # print(pd.to_datetime(arr[-1, 0], unit='s'))

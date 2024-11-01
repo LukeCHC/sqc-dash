@@ -98,7 +98,7 @@ class FindSV:
         self._log(f"Downloaded {log_type} {file_type} files for {day}.")
         return Path(save_path)
 
-    def read_and_save_data(self):
+    def read_and_save_sp3_files(self):
         """
         Read SP3 and save as numpy array.
     
@@ -138,6 +138,8 @@ class FindSV:
         unique_rows = np.unique(sp3_arr_comb[:, 0:3],axis=0, return_index=True)[1]
         sp3_arr_unique = sp3_arr_comb[unique_rows]
         
+        all_sv_pos_arr = []
+        
         for sys in self.system:
             
             # G:1 R:2 C:3 E:4 J:5
@@ -167,11 +169,12 @@ class FindSV:
                 sys_list = [sysNum for i in poi]
                 
                 # convert pandas timestamp in seconds into second of day
-                timestamps = pd.to_datetime(poi, unit='s')
-                sod = (timestamps.hour * 3600 + timestamps.minute * 60 + timestamps.second).to_numpy().astype(int)
+                timetags = pd.to_datetime(poi, unit='s')
+                timestamps = [i.timestamp() for i in timetags]
+                # sod = (timestamps.hour * 3600 + timestamps.minute * 60 + timestamps.second).to_numpy().astype(int)
                 
                 interp_prn_arr = np.array([
-                    sod, 
+                    timestamps, 
                     sys_list,
                     prn_list, 
                     prn_x * 1000, # km to m, 
@@ -184,6 +187,14 @@ class FindSV:
             # turn list into large array
             sv_pos_arr = np.hstack([i for i in split_arrays]) 
             self.save_sv_pos_to_npy(sv_pos_arr, sys)
+            
+            # Add the sv_pos_arr to the list of all arrays
+            all_sv_pos_arr.append(sv_pos_arr)
+
+        # Combine all sv_pos_arr arrays into one large array
+        return_arr = np.hstack(all_sv_pos_arr).T
+        
+        return return_arr
                 
     def save_sv_pos_to_npy(self, sv_pos_arr, sys):
         # get epoch info
@@ -209,14 +220,15 @@ class FindSV:
         
         self.download_files()
         self._log("Beginning conversion process of SP3 to .npy")
-        self.read_and_save_data()
+        self.read_and_save_sp3_files()
         self._log("Beginning process of SP3 interpolation")
-        self.interpolate_data()
+        sv_pos_arr = self.interpolate_data()
         self._log(f"Completed the Find SV for {self.epoch}.")
-
+        return sv_pos_arr
+    
 if __name__ == '__main__':
 
-    from FileLogging.SimpleLogger  import SimpleLogger    
+    from FileLogging.simple_logger  import SimpleLogger    
     # Sample usage (using placeholders)
     test_dir = Path(r"F:/test/sp3_test/")
     logger = SimpleLogger(test_dir / "test.log", print_to_console=True)

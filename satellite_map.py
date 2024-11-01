@@ -6,6 +6,7 @@ import plotly.express as px
 from datetime import datetime
 from pathlib import Path
 import folium
+from folium.features import DivIcon
 
 # Import necessary functions from your existing code
 from Coord import LLA
@@ -70,21 +71,24 @@ class SatelliteVisibilityApp:
             self.time = st.time_input("Time", key="time_input")
 
     def initialize_map(self):
-        if not hasattr(self, 'map'):
-            self.map = folium.Map(
-                zoom_start=3.5,
-                control_scale=True,
-                zoom_control=False,
-                scrollWheelZoom=True,
-                dragging=True,
-                attributionControl=False,
-                max_bounds=True,
-            )
+        self.map = folium.Map(
+            location=[st.session_state.input_lat, st.session_state.input_lon],
+            zoom_start=3.5,
+            control_scale=True,
+            zoom_control=False,
+            scrollWheelZoom=True,
+            dragging=True,
+            attributionControl=False,
+            max_bounds=True,
+        )
+
+
 
     def clear_markers(self):
-        for key in list(self.map._children):
-            if key.startswith('marker_'):
-                del self.map._children[key]
+        marker_keys = [key for key in self.map._children if key.startswith('marker_')]
+        for key in marker_keys:
+            del self.map._children[key]
+
 
     def add_current_position_marker(self):
         folium.Marker(
@@ -136,18 +140,32 @@ class SatelliteVisibilityApp:
         self.clear_markers()
         self.add_current_position_marker()
         self.add_satellite_markers()
-        map_output = self.display_map()
-        self.update_position_on_click(map_output)
+        
+        # Display the map and handle click events
+        map_output = st_folium(self.map, width=700, height=500, key="map")
+        
+        # Process click events
+        if map_output and map_output['last_clicked']:
+            new_lat = map_output['last_clicked']['lat']
+            new_lon = map_output['last_clicked']['lng']
+            if -90 <= new_lat <= 90 and -180 <= new_lon <= 180:
+                st.session_state.input_lat = new_lat
+                st.session_state.input_lon = new_lon
+                if st.session_state.sat_pos_lla_arr is not None:
+                    self.calculate_azel()
+                # Rerun the app to update the map with new markers
+                st.rerun()
 
-    def calculate_visibility_live(self):
-        """Calculates and displays satellite visibility based on user input."""
-        self.sat_pos_calcs.retrieve_and_process_satellite_data()
-        sat_pos_lla_arr = st.session_state.live_sat_pos
-        st.session_state.sat_pos_lla_arr = sat_pos_lla_arr
-        print(sat_pos_lla_arr.shape)
-        self.calculate_azel()
-        self.add_satellite_markers()
-        self.display_map()
+
+        def calculate_visibility_live(self):
+            """Calculates and displays satellite visibility based on user input."""
+            self.sat_pos_calcs.retrieve_and_process_satellite_data()
+            sat_pos_lla_arr = st.session_state.live_sat_pos
+            st.session_state.sat_pos_lla_arr = sat_pos_lla_arr
+            print(sat_pos_lla_arr.shape)
+            self.calculate_azel()
+            self.add_satellite_markers()
+            self.display_map()
 
     def calculate_visibility_past(self):
         self.sat_pos_calcs = SatPosCalcs(self, st.session_state)
@@ -183,11 +201,18 @@ class SatelliteVisibilityApp:
     def show_instructions(self):
         st.markdown("""
 [Github](https://github.com/LukeCHC/sqc-dash)
+### Instructions
 1. Click on the map to set the ground station position.
 2. Input the date and time.
 3. Today's date will use live BRDC ephemeris from a real time stream
 4. Past Days will use past BRDC files from NASA CDDIS.
 5. Click the button to calculate satellite visibility.
+
+### Steps Involved
+1. Connect to live data broadcast or past data ftp.
+2. Calculate satellite positions using kepler's laws of planetary motion.
+3. Transform satellite positions to Latitude and Longitude.
+4. Calculate azimuth and elevation of satellites from the ground station.
 """)
 
     def generate_static_azel_plot(self, sat_pos_azel):

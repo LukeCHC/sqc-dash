@@ -59,6 +59,38 @@ class AltAzimuthRange():
         bp_radius = bp[:,4] 
         br = self.RotateGlobe(self.target, self.observer, bp_radius)
         dist = np.round(AltAzimuthRange.Distance(ap, bp), 4)
+        
+        azimuth = np.full(bp.shape[0], np.nan)
+        elevation = np.full(bp.shape[0], np.nan)
+        
+        valid_indices = (br[:, 2] * br[:, 2] + br[:, 1] * br[:, 1]) > 1.0e-6
+        
+        if valid_indices.any():
+        
+            theta = np.arctan2(br[valid_indices,2], br[valid_indices,1]) * 180.0 / np.pi
+            azimuth[valid_indices] = self.normalise_azimuth(90.0 - theta)
+    
+            bma = AltAzimuthRange.NormalizeVectorDiff(bp, ap)
+            if bma is not None:
+                elevation[valid_indices] = 90.0 - (180.0 / np.pi) * np.arccos(
+                    bma[valid_indices,0] * ap[:,4] + bma[valid_indices,1] * ap[:,5] + bma[valid_indices,2] * ap[:,6])
+                elevation = np.round(elevation, 4)
+            else:
+                elevation = None
+        else:
+            azimuth = None
+            elevation = None
+            
+        return_arr = np.vstack([azimuth, elevation, dist]).T.reshape(-1, 3)
+        
+        return return_arr
+        
+    def calculate_(self) -> dict:
+        ap = self.LocationToPoint(self.observer)
+        bp = self.LocationToPoint(self.target)
+        bp_radius = bp[:,4] 
+        br = self.RotateGlobe(self.target, self.observer, bp_radius)
+        dist = np.round(AltAzimuthRange.Distance(ap, bp), 4)
         if (br[:,2] * br[:,2] + br[:,1] * br[:,1] > 1.0e-6).all():
             theta = np.arctan2(br[:,2], br[:,1]) * 180.0 / np.pi
             azimuth = 90.0 - theta

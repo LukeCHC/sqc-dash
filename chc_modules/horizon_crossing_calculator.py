@@ -1,11 +1,11 @@
-from chc_modules import FindSvBrdc
+from chc_modules import FindSvBrdc, FindSV
 from Coord import LLA, ECEF
 from datetime import datetime
 import pandas as pd
 import numpy as np
 
 class CalculateHorizonCrossings:
-    def __init__(self, process_date, ground_pos_lla, local_work_dir, elevation_mask = 15, logger = None):
+    def __init__(self, process_date, ground_pos_lla, local_work_dir, elevation_mask=15, logger=None):
         """
         Calculate the epochs at which a satellite comes above and below the horizon.
         
@@ -21,7 +21,6 @@ class CalculateHorizonCrossings:
             logger: SimpleLogger
                 Logger object to write logs to.
         """
-        
         if not isinstance(process_date, datetime):
             raise TypeError("process_date must be a datetime object")
         self.process_date = process_date
@@ -29,34 +28,61 @@ class CalculateHorizonCrossings:
         self.elevation_mask = int(elevation_mask)
         self.local_work_dir = local_work_dir
         self.logger = logger
-    
+
     def run(self):
-        
         # download brdc GPS
-        find_sv_brdc_GCE = FindSvBrdc(self.process_date, ['G','C','E'], self.local_work_dir, save_file_flag = False, interval = 30, logger = self.logger)
-        sv_pos_arr_GCE = find_sv_brdc_GCE.run()
+        try:  # sp3
+            find_sv_sp3_GCE = FindSV(self.process_date, ['G', 'C', 'E'], self.local_work_dir, interval=30, logger=self.logger)
+            sv_pos_arr_GCE = find_sv_sp3_GCE.run()
+        except:
+            find_sv_brdc_GCE = FindSvBrdc(self.process_date, ['G', 'C', 'E'], self.local_work_dir, save_file_flag=False, interval=30, logger=self.logger)
+            sv_pos_arr_GCE = find_sv_brdc_GCE.run()
         
         # calculate azel
-        sat_pos_ecef_arr = ECEF(sv_pos_arr_GCE[:,3:6])
+        sat_pos_ecef = ECEF(sv_pos_arr_GCE[:, 3:6])
         ground_pos_lla = self.ground_pos_lla
         
-        azel = ground_pos_lla.calculate_azel(sat_pos_ecef_arr)
+        azel = ground_pos_lla.calculate_azel(sat_pos_ecef)
         
         full_combined_arr = np.hstack((sv_pos_arr_GCE, azel))
         
-        sat_pos_df = pd.DataFrame(full_combined_arr, columns = ['epoch','sys', 'prn', 'x', 'y', 'z', 'az', 'el'])
+        sat_pos_df = pd.DataFrame(full_combined_arr, columns=['epoch', 'sys', 'prn', 'x', 'y', 'z', 'az', 'el'])
         
-        el_crossing_df = sat_pos_df.groupby(['sys','prn']).apply(self.find_elevation_crossings).reset_index()
-        
+        return self._process_sat_pos_df(sat_pos_df)
+    
+    def run_with_sat_pos_df(self, sat_pos_df):
+        """
+        Process the provided satellite position DataFrame directly.
+
+        args:
+            sat_pos_df: pd.DataFrame
+                DataFrame containing satellite positions and calculated azimuth/elevation.
+
+        returns:
+            el_crossing_df: pd.DataFrame
+                DataFrame containing the entering and leaving epochs for each satellite.
+        """
+        return self._process_sat_pos_df(sat_pos_df)
+    
+    def _process_sat_pos_df(self, sat_pos_df):
+        """
+        Internal method to process the satellite position DataFrame and find elevation crossings.
+
+        args:
+            sat_pos_df: pd.DataFrame
+                DataFrame containing satellite positions and calculated azimuth/elevation.
+
+        returns:
+            el_crossing_df: pd.DataFrame
+                DataFrame containing the entering and leaving epochs for each satellite.
+        """
+        el_crossing_df = sat_pos_df.groupby(['sys', 'prn']).apply(self.find_elevation_crossings).reset_index()
         el_crossing_df.columns = ['sys', 'prn', 'arc number', 'entering_epoch', 'leaving_epoch']
-        
-        el_crossing_df['entering_epoch'] = pd.to_datetime(el_crossing_df['entering_epoch'], unit = 's')
-        el_crossing_df['leaving_epoch'] = pd.to_datetime(el_crossing_df['leaving_epoch'], unit = 's')
-        
+        el_crossing_df['entering_epoch'] = pd.to_datetime(el_crossing_df['entering_epoch'], unit='s')
+        el_crossing_df['leaving_epoch'] = pd.to_datetime(el_crossing_df['leaving_epoch'], unit='s')
         return el_crossing_df
-            
+
     def find_elevation_crossings(self, group):
-        
         # Identify where the elevation crosses the threshold
         above = group['el'] >= self.elevation_mask
         # Find transitions
